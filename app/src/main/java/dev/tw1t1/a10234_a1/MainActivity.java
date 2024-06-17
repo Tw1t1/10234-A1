@@ -2,19 +2,21 @@ package dev.tw1t1.a10234_a1;
 
 import android.Manifest;
 import android.content.Context;
+import android.content.Intent;
 import android.content.pm.PackageManager;
 import android.database.Cursor;
+import android.net.Uri;
 import android.os.BatteryManager;
 import android.os.Bundle;
 import android.provider.ContactsContract;
-import android.view.View;
+import android.provider.Settings;
 import android.widget.Button;
 import android.widget.EditText;
 import android.widget.TextView;
-import android.widget.Toast;
-import androidx.annotation.NonNull;
+import androidx.activity.result.ActivityResultLauncher;
+import androidx.activity.result.contract.ActivityResultContracts;
+import androidx.appcompat.app.AlertDialog;
 import androidx.appcompat.app.AppCompatActivity;
-import androidx.core.app.ActivityCompat;
 import androidx.core.content.ContextCompat;
 import android.hardware.Sensor;
 import android.hardware.SensorEvent;
@@ -35,8 +37,6 @@ public class MainActivity extends AppCompatActivity {
     private float[] geomagnetic;
     private boolean isFacingNorth = false;
 
-    private static final int REQUEST_CONTACTS_PERMISSION = 1;
-
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
@@ -48,16 +48,8 @@ public class MainActivity extends AppCompatActivity {
         //     return insets;
         // });
 
-        passwordEditText = findViewById(R.id.passwordEditText);
-        loginButton = findViewById(R.id.loginButton);
-        loginMessageTextView = findViewById(R.id.loginMessageTextView);
-
-        loginButton.setOnClickListener(new View.OnClickListener() {
-            @Override
-            public void onClick(View v) {
-                checkLogin();
-            }
-        });
+        findViews();
+        initViews();
 
         sensorManager = (SensorManager) getSystemService(Context.SENSOR_SERVICE);
         sensorManager.registerListener(sensorEventListener,
@@ -69,10 +61,18 @@ public class MainActivity extends AppCompatActivity {
 
         if (ContextCompat.checkSelfPermission(this, Manifest.permission.READ_CONTACTS)
                 != PackageManager.PERMISSION_GRANTED) {
-            ActivityCompat.requestPermissions(this,
-                    new String[]{Manifest.permission.READ_CONTACTS},
-                    REQUEST_CONTACTS_PERMISSION);
+            requestPermissionLauncher.launch(Manifest.permission.READ_CONTACTS);
         }
+    }
+
+    private void initViews() {
+        loginButton.setOnClickListener(v -> checkLogin());
+    }
+
+    private void findViews() {
+        passwordEditText = findViewById(R.id.passwordEditText);
+        loginButton = findViewById(R.id.loginButton);
+        loginMessageTextView = findViewById(R.id.loginMessageTextView);
     }
 
     private void checkLogin() {
@@ -82,9 +82,9 @@ public class MainActivity extends AppCompatActivity {
 
         if (password.contains(String.valueOf(batteryPercentage)) &&
                 password.contains(String.valueOf(contactCount)) && isFacingNorth) {
-            loginMessageTextView.setText("Login Successful");
+            loginMessageTextView.setText(R.string.login_successful);
         } else {
-            loginMessageTextView.setText("Login Failed");
+            loginMessageTextView.setText(R.string.login_failed);
         }
     }
 
@@ -115,11 +115,11 @@ public class MainActivity extends AppCompatActivity {
             if (event.sensor.getType() == Sensor.TYPE_MAGNETIC_FIELD)
                 geomagnetic = event.values;
             if (gravity != null && geomagnetic != null) {
-                float R[] = new float[9];
-                float I[] = new float[9];
+                float[] R = new float[9];
+                float[] I = new float[9];
                 boolean success = SensorManager.getRotationMatrix(R, I, gravity, geomagnetic);
                 if (success) {
-                    float orientation[] = new float[3];
+                    float[] orientation = new float[3];
                     SensorManager.getOrientation(R, orientation);
                     float azimuth = (float) Math.toDegrees(orientation[0]);
                     isFacingNorth = (azimuth >= -10 && azimuth <= 10);
@@ -138,17 +138,46 @@ public class MainActivity extends AppCompatActivity {
         sensorManager.unregisterListener(sensorEventListener);
     }
 
-    @Override
-    public void onRequestPermissionsResult(int requestCode,
-                                           @NonNull String[] permissions,
-                                           @NonNull int[] grantResults) {
-        super.onRequestPermissionsResult(requestCode, permissions, grantResults);
-        if (requestCode == REQUEST_CONTACTS_PERMISSION) {
-            if (grantResults.length > 0 && grantResults[0] == PackageManager.PERMISSION_GRANTED) {
-                // Permission granted
-            } else {
-                Toast.makeText(this, "Contacts permission is required", Toast.LENGTH_SHORT).show();
-            }
-        }
+    private final ActivityResultLauncher<String> requestPermissionLauncher = registerForActivityResult(
+            new ActivityResultContracts.RequestPermission(),
+            isGranted -> {
+                if (isGranted) {
+                    // Permission granted
+                    // Continue app logic
+                } else {
+                    showPermissionAlert();
+                }
+            });
+
+    private void showPermissionAlert() {
+        AlertDialog.Builder builder = new AlertDialog.Builder(this);
+        builder.setTitle("Permissions Required")
+                .setMessage("This app needs Contacts permission to function. You can grant the permission in Application Settings.")
+                .setPositiveButton("GOTO SETTINGS", (dialog, which) -> openSettings())
+                .setNegativeButton("Exit", (dialog, which) -> {
+                    // Close the app
+                    finish();
+                })
+                .show();
     }
+
+    private void openSettings() {
+        Intent intent = new Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS);
+        Uri uri = Uri.fromParts("package", getPackageName(), null);
+        intent.setData(uri);
+        requestSettingsLauncher.launch(intent);
+    }
+
+    private final ActivityResultLauncher<Intent> requestSettingsLauncher = registerForActivityResult(
+            new ActivityResultContracts.StartActivityForResult(),
+            result -> {
+                if (ContextCompat.checkSelfPermission(MainActivity.this, Manifest.permission.READ_CONTACTS)
+                        == PackageManager.PERMISSION_GRANTED) {
+                    // Permission granted
+                    // Continue app logic
+                } else {
+                    // Permission is not granted, handle accordingly
+                    showPermissionAlert();
+                }
+            });
 }

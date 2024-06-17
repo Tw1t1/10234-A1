@@ -1,3 +1,5 @@
 <resources>
     <string name="app_name">10234-A1</string>
+    <string name="login_successful">Login Successful</string>
+    <string name="login_failed">Login Failed</string>
 </resources>
